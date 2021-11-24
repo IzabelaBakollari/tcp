@@ -37,35 +37,37 @@ int fixed_buffers(struct io_uring *ring) {
 		return 1;
 	}
 
-	sqe = io_uring_get_sqe(ring);
+	for (;;) {
+		sqe = io_uring_get_sqe(ring);
 
-	if (!sqe) {
-		fprintf(stderr, "Could not get SQE.\n");
-		return 1;
-	}
+		if (!sqe) {
+			fprintf(stderr, "Could not get SQE.\n");
+			return 1;
+		}
 	
-	io_uring_prep_write_fixed(sqe, 1, iov.iov_base, BUF_SZ, 0, 0);
+		io_uring_prep_write_fixed(sqe, 1, iov.iov_base, BUF_SZ, 0, 0);
 
-	ret = io_uring_submit(ring);
+		ret = io_uring_submit(ring);
 
-	if (ret < 0) {
-		fprintf(stderr, "Error submitting buffers: %s\n", strerror(-ret));
-		return 1;
+		if (ret < 0) {
+			fprintf(stderr, "Error submitting buffers: %s\n", strerror(-ret));
+			return 1;
+		}
+
+		ret = io_uring_wait_cqe(ring, &cqe);
+
+		if (ret < 0) {
+			fprintf(stderr, "Error waiting for completion: %s\n",
+			strerror(-ret));
+			return 1;
+		}
+
+		if (cqe->res < 0) {
+			fprintf(stderr, "Error in async operation: %s\n", strerror(-cqe->res));
+		}
+
+		io_uring_cqe_seen(ring, cqe);
 	}
-
-	ret = io_uring_wait_cqe(ring, &cqe);
-
-	if (ret < 0) {
-		fprintf(stderr, "Error waiting for completion: %s\n",
-		strerror(-ret));
-		return 1;
-	}
-
-	if (cqe->res < 0) {
-		fprintf(stderr, "Error in async operation: %s\n", strerror(-cqe->res));
-	}
-
-	io_uring_cqe_seen(ring, cqe);
 
 	return 0;
 
