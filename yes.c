@@ -18,6 +18,7 @@ int fixed_buffers(struct io_uring *ring) {
 	struct io_uring_sqe *sqe;
 	struct io_uring_cqe *cqe;
 	int i;
+	off_t r = 0;
 	char buf[BUF_SZ];
 
 
@@ -30,13 +31,6 @@ int fixed_buffers(struct io_uring *ring) {
 		else
 			buf[i] = '\n';
 	}
-	int fd = open("/tmp/output.txt", O_RDWR|O_TRUNC|O_CREAT, 0644);
-	
-	if (fd < 0 ) {
-		perror("open");
-		return 1;
-	}
-
 
 	int ret = io_uring_register_buffers(ring, &iov, 1);
 	
@@ -53,7 +47,9 @@ int fixed_buffers(struct io_uring *ring) {
 			return 1;
 		}
 	
-		io_uring_prep_write_fixed(sqe, 1, iov.iov_base, BUF_SZ, 0, 0);
+		io_uring_prep_write_fixed(sqe, 1, iov.iov_base, BUF_SZ, r, 0);
+
+		r++;
 
 		ret = io_uring_submit(ring);
 
@@ -70,10 +66,8 @@ int fixed_buffers(struct io_uring *ring) {
 			return 1;
 		}
 
-		if (cqe->res == -EPIPE) {
-			cqe->res = 0;
+		if (cqe->res == -EPIPE)
 			return 0;
-		}
 
 		if (cqe->res < 0) {
 			fprintf(stderr, "Error in async operation: %s\n", strerror(-cqe->res));
