@@ -30,7 +30,7 @@ int fixed_buffers(struct io_uring *ring) {
 		else
 			buf[i] = '\n';
 	}
-	
+
 	int ret = io_uring_register_buffers(ring, &iov, 1);
 	
 	if (ret) {
@@ -50,10 +50,6 @@ int fixed_buffers(struct io_uring *ring) {
 
 		ret = io_uring_submit(ring);
 
-		if (errno == EPIPE) {
-			ret = 0;
-		}
-
 		if (ret < 0) {
 			fprintf(stderr, "Error submitting buffers: %s\n", strerror(-ret));
 			return 1;
@@ -65,6 +61,10 @@ int fixed_buffers(struct io_uring *ring) {
 			fprintf(stderr, "Error waiting for completion: %s\n",
 			strerror(-ret));
 			return 1;
+		}
+
+		if (cqe->res == -EPIPE) {
+			cqe->res = 0;
 		}
 
 		if (cqe->res < 0) {
