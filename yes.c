@@ -49,7 +49,7 @@ int fixed_buffers(struct io_uring *ring) {
 	
 		io_uring_prep_write_fixed(sqe, 1, iov.iov_base, BUF_SZ, r, 0);
 
-		r++;
+		r += BUF_SZ;
 
 		ret = io_uring_submit(ring);
 
