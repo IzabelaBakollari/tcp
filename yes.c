@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <liburing.h>
 #include <limits.h>
+#include <errno.h>
 
 #define BUF_SZ 4096
 
@@ -48,6 +49,10 @@ int fixed_buffers(struct io_uring *ring) {
 		io_uring_prep_write_fixed(sqe, 1, iov.iov_base, BUF_SZ, 0, 0);
 
 		ret = io_uring_submit(ring);
+
+		if (errno == EPIPE) {
+			ret = 0;
+		}
 
 		if (ret < 0) {
 			fprintf(stderr, "Error submitting buffers: %s\n", strerror(-ret));
