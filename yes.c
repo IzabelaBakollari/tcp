@@ -30,6 +30,13 @@ int fixed_buffers(struct io_uring *ring) {
 		else
 			buf[i] = '\n';
 	}
+	int fd = open("/tmp/output.txt", O_RDWR|O_TRUNC|O_CREAT, 0644);
+	
+	if (fd < 0 ) {
+		perror("open");
+		return 1;
+	}
+
 
 	int ret = io_uring_register_buffers(ring, &iov, 1);
 	
@@ -65,6 +72,7 @@ int fixed_buffers(struct io_uring *ring) {
 
 		if (cqe->res == -EPIPE) {
 			cqe->res = 0;
+			return 0;
 		}
 
 		if (cqe->res < 0) {
