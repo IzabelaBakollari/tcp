@@ -10,7 +10,8 @@
 #include <limits.h>
 #include <errno.h>
 
-#define BUF_SZ 4096
+#define BUF_SZ   4096
+#define RING_SZ  8
 
 int fixed_buffers(struct io_uring *ring) {
 
@@ -18,6 +19,7 @@ int fixed_buffers(struct io_uring *ring) {
 	struct io_uring_sqe *sqe;
 	struct io_uring_cqe *cqe;
 	int i;
+	unsigned int nr = 0;
 	off_t r = 0;
 	char buf[BUF_SZ];
 
@@ -40,25 +42,31 @@ int fixed_buffers(struct io_uring *ring) {
 	}
 
 	for (;;) {
-		sqe = io_uring_get_sqe(ring);
 
-		if (!sqe) {
-			fprintf(stderr, "Could not get SQE.\n");
-			return 1;
-		}
+		for (i = 0; i<RING_SZ; i++) {
+
+			sqe = io_uring_get_sqe(ring);
+
+			if (!sqe) {
+				fprintf(stderr, "Could not get SQE.\n");
+				return 1;
+			}
 	
-		io_uring_prep_write_fixed(sqe, 1, iov.iov_base, BUF_SZ, r, 0);
+			io_uring_prep_write_fixed(sqe, 1, iov.iov_base, BUF_SZ, r, 0);
 
-		r += BUF_SZ;
+			r += BUF_SZ;
 
-		ret = io_uring_submit(ring);
+			nr++; 
+		}
+
+		ret = io_uring_submit_and_wait(ring, nr);
 
 		if (ret < 0) {
 			fprintf(stderr, "Error submitting buffers: %s\n", strerror(-ret));
 			return 1;
 		}
 
-		ret = io_uring_wait_cqe(ring, &cqe);
+		ret = io_uring_wait_cqe_nr(ring, &cqe, RING_SZ);
 
 		if (ret < 0) {
 			fprintf(stderr, "Error waiting for completion: %s\n",
@@ -71,6 +79,7 @@ int fixed_buffers(struct io_uring *ring) {
 
 		if (cqe->res < 0) {
 			fprintf(stderr, "Error in async operation: %s\n", strerror(-cqe->res));
+			return 1;
 		}
 
 		io_uring_cqe_seen(ring, cqe);
@@ -91,10 +100,10 @@ int main() {
 		return 1;
 	}
 
-	fixed_buffers(&ring);
+	ret = fixed_buffers(&ring);
 
 	io_uring_queue_exit(&ring);
 
-	return 0;
+	return ret;
 
 }
