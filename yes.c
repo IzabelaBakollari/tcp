@@ -17,7 +17,7 @@ int fixed_buffers(struct io_uring *ring) {
 
 	struct iovec iov;
 	struct io_uring_sqe *sqe;
-	struct io_uring_cqe *cqe;
+	struct io_uring_cqe cqe[RING_SZ];
 	int i;
 	unsigned int nr = 0;
 	off_t r = 0;
@@ -66,28 +66,28 @@ int fixed_buffers(struct io_uring *ring) {
 			return 1;
 		}
 
-		for (i=0; i < RING_SZ; i++) {
- 
-			ret = io_uring_peek_batch_cqe(ring, &cqe, RING_SZ);
+		ret = io_uring_peek_batch_cqe(ring, (struct io_uring_cqe **)&cqe, RING_SZ);
 
-			if (ret < 0) {
-				fprintf(stderr, "Error waiting for completion: %s\n",
-				strerror(-ret));
-				return 1;
-			}
-
-			nr -= ret;
-		}
-
-		if (cqe->res == -EPIPE)
-			return 0;
-
-		if (cqe->res < 0) {
-			fprintf(stderr, "Error in async operation: %s\n", strerror(-cqe->res));
+		if (ret < 0) {
+			fprintf(stderr, "Error waiting for completion: %s\n",
+			strerror(-ret));
 			return 1;
 		}
 
-		io_uring_cqe_seen(ring, cqe);
+		nr -= ret;
+		
+		for (i=0; i < RING_SZ; i++) {
+
+			if (cqe[i].res == -EPIPE)
+				return 0;
+
+			if (cqe[i].res < 0) {
+				fprintf(stderr, "Error in async operation: %s\n", strerror(-cqe[i].res));
+				return 1;
+			}
+		}
+
+		io_uring_cq_advance(ring, ret);
 	}
 
 	return 0;
