@@ -66,12 +66,17 @@ int fixed_buffers(struct io_uring *ring) {
 			return 1;
 		}
 
-		ret = io_uring_wait_cqe_nr(ring, &cqe, RING_SZ);
+		for (i=0; i < RING_SZ; i++) {
+ 
+			ret = io_uring_peek_batch_cqe(ring, &cqe, RING_SZ);
 
-		if (ret < 0) {
-			fprintf(stderr, "Error waiting for completion: %s\n",
-			strerror(-ret));
-			return 1;
+			if (ret < 0) {
+				fprintf(stderr, "Error waiting for completion: %s\n",
+				strerror(-ret));
+				return 1;
+			}
+
+			nr -= ret;
 		}
 
 		if (cqe->res == -EPIPE)
