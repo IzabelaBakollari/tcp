@@ -59,16 +59,14 @@ int fixed_buffers(struct io_uring *ring) {
 			nr++; 
 		}
 
-		ret = io_uring_submit_and_wait(ring, nr);
+		int submit_wait = io_uring_submit_and_wait(ring, 1);
 
-		if (ret < 0) {
+		if (submit_wait  < 0) {
 			fprintf(stderr, "Error submitting buffers: %s\n", strerror(-ret));
 			return 1;
 		}
 
-		//ret = io_uring_peek_batch_cqe(ring, (struct io_uring_cqe **)&cqe, RING_SZ);
-
-		for (i=0; i < RING_SZ; i++) {
+		for (i=0; i < submit_wait; i++) {
 
 			ret = io_uring_peek_cqe(ring, &cqe);
 
