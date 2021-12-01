@@ -86,6 +86,8 @@ int fixed_buffers(struct io_uring *ring) {
 				return 1;
 			}
 		}
+
+		io_uring_cq_advance(ring, ret);
 	}
 
 	return 0;
