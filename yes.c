@@ -59,24 +59,24 @@ int fixed_buffers(struct io_uring *ring) {
 			nr++; 
 		}
 
-		ret = io_uring_submit_and_wait(ring, nr);
+		ret = io_uring_submit_and_wait(ring, 1);
 
 		if (ret < 0) {
 			fprintf(stderr, "Error submitting buffers: %s\n", strerror(-ret));
 			return 1;
 		}
 
-		ret = io_uring_peek_batch_cqe(ring, cqe, RING_SZ);
+		unsigned int batch_sz = io_uring_peek_batch_cqe(ring, cqe, nr);
 
-		if (ret < 0) {
+		if (batch_sz < 0) {
 			fprintf(stderr, "Error waiting for completion: %s\n",
 			strerror(-ret));
 			return 1;
 		}
 
-		nr -= ret;
+		nr -= batch_sz;
 		
-		for (i=0; i < RING_SZ; i++) {
+		for (i=0; i < batch_sz; i++) {
 
 			if (cqe[i]->res == -EPIPE)
 				return 0;
@@ -87,7 +87,7 @@ int fixed_buffers(struct io_uring *ring) {
 			}
 		}
 
-		io_uring_cq_advance(ring, ret);
+		io_uring_cq_advance(ring, batch_sz);
 	}
 
 	return 0;
