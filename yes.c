@@ -9,6 +9,7 @@
 #include <liburing.h>
 #include <limits.h>
 #include <errno.h>
+#include <assert.h>
 
 #define BUF_SZ   4096
 #define RING_SZ  8
@@ -20,6 +21,7 @@ int fixed_buffers(struct io_uring *ring) {
 	struct io_uring_cqe *cqe[RING_SZ];
 	int i;
 	unsigned int nr = 0;
+	unsigned int limit = 8;
 	off_t r = 0;
 	char buf[BUF_SZ];
 
@@ -43,7 +45,7 @@ int fixed_buffers(struct io_uring *ring) {
 
 	for (;;) {
 
-		for (i = 0; i<RING_SZ; i++) {
+		for (i = 0; i<limit; i++) {
 
 			sqe = io_uring_get_sqe(ring);
 
@@ -55,9 +57,11 @@ int fixed_buffers(struct io_uring *ring) {
 			io_uring_prep_write_fixed(sqe, 1, iov.iov_base, BUF_SZ, r, 0);
 
 			r += BUF_SZ;
-
+			
 			nr++; 
 		}
+
+		//assert(nr <= RING_SZ);
 
 		ret = io_uring_submit_and_wait(ring, 1);
 
@@ -66,15 +70,16 @@ int fixed_buffers(struct io_uring *ring) {
 			return 1;
 		}
 
-		unsigned int batch_sz = io_uring_peek_batch_cqe(ring, cqe, nr);
+		unsigned int batch_sz = io_uring_peek_batch_cqe(ring, cqe, RING_SZ);
 
-		if (batch_sz < 0) {
+		if (!batch_sz) {
 			fprintf(stderr, "Error waiting for completion: %s\n",
 			strerror(-ret));
-			return 1;
+			//return 1;
 		}
 
 		nr -= batch_sz;
+		limit = nr;
 		
 		for (i=0; i < batch_sz; i++) {
 
