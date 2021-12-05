@@ -21,7 +21,7 @@ int fixed_buffers(struct io_uring *ring) {
 	struct io_uring_cqe *cqe;
 	int i;
 	unsigned int nr = 0;
-	unsigned int limit = 8;
+	unsigned int limit;
 	off_t r = 0;
 	char buf[BUF_SZ];
 
@@ -45,6 +45,8 @@ int fixed_buffers(struct io_uring *ring) {
 
 	for (;;) {
 
+		limit = RING_SZ - nr;
+
 		for (i = 0; i<limit; i++) {
 
 			sqe = io_uring_get_sqe(ring);
@@ -63,16 +65,19 @@ int fixed_buffers(struct io_uring *ring) {
 
 		assert(nr<=RING_SZ);
 
-		int submit = io_uring_submit_and_wait(ring, nr);
+		ret = io_uring_submit_and_wait(ring, 1);
 
-		if (submit < 0) {
-			fprintf(stderr, "Error submitting buffers: %s\n", strerror(-submit));
+		if (ret < 0) {
+			fprintf(stderr, "Error submitting buffers: %s\n", strerror(-ret));
 			return 1;
 		}
 
-		for (i=0; i < submit; i++) {
+		for (;;) {
 
 			ret = io_uring_peek_cqe(ring, &cqe);
+
+			if (ret == -EAGAIN)
+				break;
 
 			if (ret < 0) {
 				fprintf(stderr, "Error waiting for completion: %s\n",
@@ -92,8 +97,6 @@ int fixed_buffers(struct io_uring *ring) {
 
 			nr--;
 		}
-
-		limit -= nr;
 	}
 
 	return 0;
