@@ -15,9 +15,9 @@
 #define BUF_SZ	4096
 #define RING_SZ	8
 
-static int get_sqe(struct io_uring *ring){
+static int get_sqe(struct io_uring *ring, struct io_uring_sqe **sqe ){
 
-	 struct io_uring_sqe *sqe = io_uring_get_sqe(ring);
+	*sqe = io_uring_get_sqe(ring);
 
 	if (!sqe) {
 		fprintf(stderr, "Could not get SQE.\n");
@@ -63,7 +63,7 @@ int main(int argc, char const *argv[])
 	int addrlen = sizeof(address);
 	char buf[BUF_SZ] = {0};
 	struct io_uring ring;
-	struct io_uring_sqe sqe;
+	struct io_uring_sqe *sqe;
 	
 	// Creating socket file descriptor
 	if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0)
@@ -113,8 +113,8 @@ int main(int argc, char const *argv[])
 	for (;;) {
 
 		bzero(buf, BUF_SZ);
-		get_sqe(&ring);
-		io_uring_prep_read(&sqe, new_socket, buf, BUF_SZ, 0);
+		get_sqe(&ring, &sqe);
+		io_uring_prep_read(sqe, new_socket, buf, BUF_SZ, 0);
 		ret = process_cqe(&ring);
 		
 		if (ret)
@@ -126,8 +126,8 @@ int main(int argc, char const *argv[])
 		int n = 0;
 		while ((buf[n++] = getchar()) != '\n');
 	
-		get_sqe(&ring);
-		io_uring_prep_write(&sqe, new_socket, buf, strlen(buf), 0);
+		get_sqe(&ring, &sqe);
+		io_uring_prep_write(sqe, new_socket, buf, strlen(buf), 0);
 		ret = process_cqe(&ring);
 		
 		if (ret)
