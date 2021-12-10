@@ -11,22 +11,59 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 
-#define PORT   8080
-#define BUF_SZ 1024
+#define PORT	8080
+#define BUF_SZ	4096
+#define RING_SZ	8
+
+static int get_sqe(struct io_uring *ring){
+
+	 struct io_uring_sqe *sqe = io_uring_get_sqe(ring);
+
+	if (!sqe) {
+		fprintf(stderr, "Could not get SQE.\n");
+		return 1;
+	}
+
+	return 0;
+}
+
+static int process_cqe(struct io_uring *ring){
+
+	struct io_uring_cqe *cqe;
+
+	int ret = io_uring_submit(ring);
+
+	if (ret < 0) {
+		fprintf(stderr, "Error submitting buffers: %s\n", strerror(-ret));
+		return 1;
+	}
+
+	ret = io_uring_wait_cqe(ring, &cqe);
+	
+	if (ret < 0) {
+		fprintf(stderr, "Error waiting for completion: %s\n", strerror(-ret));
+		return 1;
+	}
+
+	if (cqe->res < 0) {
+		fprintf(stderr, "Error in async operation: %s\n", strerror(-cqe->res));
+		return 1;
+	}
+
+	io_uring_cqe_seen(ring, cqe);
+
+	return 0;
+}
 
 int main(int argc, char const *argv[])
 {
 	int server_fd, new_socket;
-	//int valread;
 	struct sockaddr_in address;
 	int opt = 1;
 	int addrlen = sizeof(address);
 	char buf[BUF_SZ] = {0};
-	char *hello = "Hello from server";
 	struct io_uring ring;
-	struct io_uring_sqe *sqe;
-	struct io_uring_cqe *cqe;
-
+	struct io_uring_sqe sqe;
 	
 	// Creating socket file descriptor
 	if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0)
@@ -66,74 +103,41 @@ int main(int argc, char const *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	//valread = read( new_socket , buf, BUF_SZ);
-	//printf("%s\n",buf);
-	//send(new_socket , hello , strlen(hello) , 0 );
-	//printf("Hello message sent\n");
-
-	// Start using io_uring library
-
-	int ret = io_uring_queue_init(8, &ring, 0);
+	int ret = io_uring_queue_init(RING_SZ, &ring, 0);
 
 	if (ret) {
 		fprintf(stderr, "Unable to setup io_uring: %s\n", strerror(-ret));
 		return 1;
 	}
 
-	sqe = io_uring_get_sqe(&ring);
+	for (;;) {
 
-	if (!sqe) {
-		fprintf(stderr, "Could not get SQE.\n");
-		return 1;
-	}
+		bzero(buf, BUF_SZ);
+		get_sqe(&ring);
+		io_uring_prep_read(&sqe, new_socket, buf, BUF_SZ, 0);
+		ret = process_cqe(&ring);
+		
+		if (ret)
+			break;
+		
+		printf("%s\n",buf);
 
-	//void io_uring_prep_read(struct io_uring_sqe *sqe, int fd, void *buf, unsigned nbytes, off_t offset)
-
-	io_uring_prep_read(sqe, new_socket, buf, BUF_SZ, 0);
-	sqe->flags |= IOSQE_IO_LINK;
-
-	printf("%s\n",buf);
-
-
-	sqe = io_uring_get_sqe(&ring);
-
-	if (!sqe) {
-		fprintf(stderr, "Could not get SQE.\n");
-		return 1;
-	}
-
-	//void io_uring_prep_write(struct io_uring_sqe *sqe, int fd, const void *buf, unsigned nbytes, off_t offset)
+		bzero(buf, BUF_SZ);
+		int n = 0;
+		while ((buf[n++] = getchar()) != '\n');
 	
-	io_uring_prep_write(sqe, new_socket, hello, BUF_SZ, 0);
-	sqe->flags |= IOSQE_IO_LINK;
+		get_sqe(&ring);
+		io_uring_prep_write(&sqe, new_socket, buf, strlen(buf), 0);
+		ret = process_cqe(&ring);
+		
+		if (ret)
+			break;
 
-	printf("Hello message sent\n");
-
-
-	ret = io_uring_submit_and_wait(&ring, 2);
-
-	if (ret < 0) {
-		fprintf(stderr, "Error submitting buffers: %s\n", strerror(-ret));
-		return 1;
-	}
-
-	for (int i = 0; i < 2; i++) { 
-
-		ret = io_uring_peek_cqe(&ring, &cqe);
-	
-		if (ret < 0) {
-			fprintf(stderr, "Error waiting for completion: %s\n", strerror(-ret));
-			return 1;
-		}
-
-		if (cqe->res < 0) {
-			fprintf(stderr, "Error in async operation: %s\n", strerror(-cqe->res));
-		}
-
-		io_uring_cqe_seen(&ring, cqe);
+		printf("Message sent to the client\n");
 	}
 
 	io_uring_queue_exit(&ring);
+	close(server_fd);
 
 	return 0;
 }
