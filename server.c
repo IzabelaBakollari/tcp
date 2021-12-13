@@ -19,7 +19,7 @@ static int get_sqe(struct io_uring *ring, struct io_uring_sqe **sqe ){
 
 	*sqe = io_uring_get_sqe(ring);
 
-	if (!sqe) {
+	if (!*sqe) {
 		fprintf(stderr, "Could not get SQE.\n");
 		return 1;
 	}
@@ -62,6 +62,7 @@ int main(int argc, char const *argv[])
 	int opt = 1;
 	int addrlen = sizeof(address);
 	char buf[BUF_SZ] = {0};
+	char buffer[BUF_SZ] = {0};
 	struct io_uring ring;
 	struct io_uring_sqe *sqe;
 	
@@ -91,6 +92,8 @@ int main(int argc, char const *argv[])
 		exit(EXIT_FAILURE);
 	}
 
+	printf("Listener on port %d \n", PORT);
+
 	if (listen(server_fd, 3) < 0)
 	{
 		perror("listen");
@@ -116,24 +119,25 @@ int main(int argc, char const *argv[])
 		get_sqe(&ring, &sqe);
 		io_uring_prep_read(sqe, new_socket, buf, BUF_SZ, 0);
 		ret = process_cqe(&ring);
-		
+
 		if (ret)
 			break;
 		
-		printf("%s\n",buf);
-
-		bzero(buf, BUF_SZ);
-		int n = 0;
-		while ((buf[n++] = getchar()) != '\n');
+		printf("%s\n", buf);
 	
 		get_sqe(&ring, &sqe);
 		io_uring_prep_write(sqe, new_socket, buf, strlen(buf), 0);
-		ret = process_cqe(&ring);
-		
-		if (ret)
-			break;
 
-		printf("Message sent to the client\n");
+		get_sqe(&ring, &sqe);
+		io_uring_prep_read(sqe, new_socket, buffer, BUF_SZ, 0);
+
+		for (;;){
+
+			ret = process_cqe(&ring);
+	
+			if (ret)
+				break;
+		}
 	}
 
 	io_uring_queue_exit(&ring);
