@@ -121,10 +121,10 @@ int main(int argc, char const *argv[])
 
 		int submit = io_uring_submit_and_wait(&ring, 1);
 
-		if (submit == 0) {
+		if (submit < 0) {
 
-			printf("No buffers submited\n");
-			break;
+			fprintf(stderr, "Error submitting buffers: %s\n", strerror(-submit));
+			return 1;
 		}
 
 		for (int i=0; i < submit; i++) {
@@ -144,11 +144,12 @@ int main(int argc, char const *argv[])
 
 		submit = io_uring_submit_and_wait(&ring, 1);
 
-		if (submit == 0) {
+		if (submit < 0) {
 
-			printf("No buffers submited\n");
-			break;
+			fprintf(stderr, "Error submitting buffers: %s\n", strerror(-submit));
+			return 1;
 		}
+
 
 		process_cqe(&ring);
 
