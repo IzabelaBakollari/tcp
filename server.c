@@ -38,10 +38,10 @@ static int process_cqe(struct io_uring *ring){
 		return 1;
 	}
 
-	int res = -cqe->res;
+	int res = cqe->res;
 
 	if (res < 0) {
-		fprintf(stderr, "Error in async operation: %s\n", strerror(res));
+		fprintf(stderr, "Error in async operation: %s\n", strerror(-res));
 		return 1;
 	}
 
@@ -129,14 +129,14 @@ int main(int argc, char const *argv[])
 
 		for (int i=0; i < submit; i++) {
 
-			process_cqe(&ring);
+			//process_cqe(&ring);
 			
-			/*
+			
 			int res = process_cqe(&ring);
 
 			for (i=0; i<res; i++)
 				printf("%x ", ((unsigned char*) buf)[i]);
-			*/
+			
 		}
  
 		get_sqe(&ring, &sqe);
