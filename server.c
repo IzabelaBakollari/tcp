@@ -31,28 +31,23 @@ static int process_cqe(struct io_uring *ring){
 
 	struct io_uring_cqe *cqe;
 
-	int ret = io_uring_submit(ring);
+	int ret = io_uring_peek_cqe(ring, &cqe);
 
 	if (ret < 0) {
-		fprintf(stderr, "Error submitting buffers: %s\n", strerror(-ret));
+		fprintf(stderr, "Error waiting for completion: %s\n",strerror(-ret));
 		return 1;
 	}
 
-	ret = io_uring_wait_cqe(ring, &cqe);
-	
-	if (ret < 0) {
-		fprintf(stderr, "Error waiting for completion: %s\n", strerror(-ret));
-		return 1;
-	}
+	int res = -cqe->res;
 
-	if (cqe->res < 0) {
-		fprintf(stderr, "Error in async operation: %s\n", strerror(-cqe->res));
+	if (res < 0) {
+		fprintf(stderr, "Error in async operation: %s\n", strerror(res));
 		return 1;
 	}
 
 	io_uring_cqe_seen(ring, cqe);
 
-	return 0;
+	return res;
 }
 
 int main(int argc, char const *argv[])
@@ -116,28 +111,47 @@ int main(int argc, char const *argv[])
 	for (;;) {
 
 		bzero(buf, BUF_SZ);
+		bzero(buffer, BUF_SZ);
+
 		get_sqe(&ring, &sqe);
 		io_uring_prep_read(sqe, new_socket, buf, BUF_SZ, 0);
-		ret = process_cqe(&ring);
-
-		if (ret)
-			break;
-		
-		printf("%s\n", buf);
-	
-		get_sqe(&ring, &sqe);
-		io_uring_prep_write(sqe, new_socket, buf, strlen(buf), 0);
 
 		get_sqe(&ring, &sqe);
 		io_uring_prep_read(sqe, new_socket, buffer, BUF_SZ, 0);
 
-		for (;;){
+		int submit = io_uring_submit_and_wait(&ring, 1);
 
-			ret = process_cqe(&ring);
-	
-			if (ret)
-				break;
+		if (submit == 0) {
+
+			printf("No buffers submited\n");
+			break;
 		}
+
+		for (int i=0; i < submit; i++) {
+
+			process_cqe(&ring);
+			
+			/*
+			int res = process_cqe(&ring);
+
+			for (i=0; i<res; i++)
+				printf("%x ", ((unsigned char*) buf)[i]);
+			*/
+		}
+ 
+		get_sqe(&ring, &sqe);
+		io_uring_prep_write(sqe, new_socket, buf, strlen(buf), 0);
+
+		submit = io_uring_submit_and_wait(&ring, 1);
+
+		if (submit == 0) {
+
+			printf("No buffers submited\n");
+			break;
+		}
+
+		process_cqe(&ring);
+
 	}
 
 	io_uring_queue_exit(&ring);
