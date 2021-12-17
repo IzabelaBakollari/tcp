@@ -35,7 +35,7 @@ static int process_cqe(struct io_uring *ring){
 
 	if (ret < 0) {
 		fprintf(stderr, "Error waiting for completion: %s\n",strerror(-ret));
-		return 1;
+		exit(EXIT_FAILURE);
 	}
 
 	int res = cqe->res;
@@ -135,12 +135,13 @@ int main(int argc, char const *argv[])
 			int res = process_cqe(&ring);
 
 			for (i=0; i<res; i++)
-				printf("%x ", ((unsigned char*) buf)[i]);
+				printf("%x ",  buf[i]);
 			
 		}
- 
-		get_sqe(&ring, &sqe);
-		io_uring_prep_write(sqe, new_socket, buf, strlen(buf), 0);
+ array of pointers in buffer 2d array
+
+		//get_sqe(&ring, &sqe);
+		//io_uring_prep_write(sqe, new_socket, buf, res, 0);
 
 		submit = io_uring_submit_and_wait(&ring, 1);
 
