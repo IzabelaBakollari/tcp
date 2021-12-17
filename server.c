@@ -19,11 +19,11 @@ struct io_data {
 	int read;
 };
 
-static int get_sqe(struct io_uring *ring, struct io_uring_sqe **sqe){
+static int get_sqe(struct io_uring *ring, struct io_uring_sqe **psqe){
 
-	*sqe = io_uring_get_sqe(ring);
+	*psqe = io_uring_get_sqe(ring);
 
-	if (!*sqe) {
+	if (!*psqe) {
 		fprintf(stderr, "Could not get SQE.\n");
 		exit(EXIT_FAILURE);
 	}
@@ -31,28 +31,28 @@ static int get_sqe(struct io_uring *ring, struct io_uring_sqe **sqe){
 	return 0;
 }
 
-static int process_cqe(struct io_uring *ring, struct io_uring_cqe **cqe){
+static int process_cqe(struct io_uring *ring, struct io_uring_cqe **pcqe){
 
-	int ret = io_uring_peek_cqe(ring, cqe);
+	int ret = io_uring_peek_cqe(ring, pcqe);
 
 	if (ret < 0) {
 		fprintf(stderr, "Error waiting for completion: %s\n",strerror(-ret));
 		exit(EXIT_FAILURE);
 	}
 
-	int res = ((struct io_uring_cqe *)cqe)->res;
+	int res = (*pcqe)->res;
 
 	if (res < 0) {
 		fprintf(stderr, "Error in async operation: %s\n", strerror(-res));
 		exit(EXIT_FAILURE);
 	}
 
-	io_uring_cqe_seen(ring, (struct io_uring_cqe *)cqe);
+	io_uring_cqe_seen(ring, *(pcqe));
 
 	return res;
 }
 
-static int submit(struct io_uring *ring, struct io_uring_cqe **cqe){
+static int submit(struct io_uring *ring, struct io_uring_cqe **pcqe){
 
 	int submit = io_uring_submit_and_wait(ring, 1);
 
@@ -63,7 +63,7 @@ static int submit(struct io_uring *ring, struct io_uring_cqe **cqe){
  	}
 
 	for (int i=0; i < submit; i++)
-		process_cqe(ring, cqe);
+		process_cqe(ring, pcqe);
 	
 	return 0;
 }
@@ -133,30 +133,30 @@ int main(int argc, char const *argv[])
 		bzero(buf, BUF_SZ);
 
 		get_sqe(&ring, &sqe);
-		io_uring_prep_read(sqe, new_socket, &buf[0][BUF_SZ], BUF_SZ, 0);
+		io_uring_prep_read(sqe, new_socket, buf[0], BUF_SZ, 0);
 		data[0].read = 1;
-		io_uring_sqe_set_data(sqe, data);
+		io_uring_sqe_set_data(sqe, &data[0]);
 
 
 		get_sqe(&ring, &sqe);
-		io_uring_prep_read(sqe, new_socket, &buf[1][BUF_SZ], BUF_SZ, 0);
+		io_uring_prep_read(sqe, new_socket, buf[1], BUF_SZ, 0);
 		data[1].read = 2;
-		io_uring_sqe_set_data(sqe, data);
+		io_uring_sqe_set_data(sqe, &data[1]);
 
 		res = submit(&ring, &cqe);
 
 		//for (i=0; i<res; i++)
 		//		printf("%x ", ((unsigned char*) buf)[i]);
 
-		io_uring_cqe_get_data(cqe);
+		struct io_data *data_cqe= io_uring_cqe_get_data(cqe);
 
-		if (data[0].read){
+		if (data_cqe->read ==1){
 			get_sqe(&ring, &sqe);
-			io_uring_prep_write(sqe, new_socket,  &buf[0][BUF_SZ], res, 0);
+			io_uring_prep_write(sqe, new_socket,  buf[0], res, 0);
 		}
-		if (data[1].read){
+		if (data_cqe->read==2){
 			get_sqe(&ring, &sqe);
-			io_uring_prep_write(sqe, new_socket,  &buf[1][BUF_SZ], res, 0);
+			io_uring_prep_write(sqe, new_socket,  buf[1], res, 0);
 		}
 
 		submit(&ring, &cqe);
