@@ -31,9 +31,23 @@ static int get_sqe(struct io_uring *ring, struct io_uring_sqe **psqe){
 	return 0;
 }
 
-static int process_cqe(struct io_uring *ring, struct io_uring_cqe **pcqe){
+static int submit(struct io_uring *ring, struct io_uring_cqe **pcqe){
+
+	int submit = io_uring_submit_and_wait(ring, 1);
+
+	if (submit < 0) {
+		fprintf(stderr, "Error on submition: %s\n", strerror(-submit));
+		exit(EXIT_FAILURE);
+ 	}
+	return 0;
+}
+
+static int process(struct io_uring *ring, struct io_uring_cqe **pcqe){
 
 	int ret = io_uring_peek_cqe(ring, pcqe);
+
+	if (ret == -EAGAIN)
+		return 11;
 
 	if (ret < 0) {
 		fprintf(stderr, "Error waiting for completion: %s\n",strerror(-ret));
@@ -52,34 +66,18 @@ static int process_cqe(struct io_uring *ring, struct io_uring_cqe **pcqe){
 	return res;
 }
 
-static int submit(struct io_uring *ring, struct io_uring_cqe **pcqe){
-
-	int submit = io_uring_submit_and_wait(ring, 1);
-
-	if (submit < 0) {
-
-		fprintf(stderr, "Error on submition: %s\n", strerror(-submit));
-		exit(EXIT_FAILURE);
- 	}
-
-	for (int i=0; i < submit; i++)
-		process_cqe(ring, pcqe);
-	
-	return 0;
-}
-
 int main(int argc, char const *argv[])
 {
 	int server_fd, new_socket;
 	struct sockaddr_in address;
 	int opt = 1;
-	int res;
 	int addrlen = sizeof(address);
 	char buf[2][BUF_SZ];
 	struct io_data data[2];
 	struct io_uring ring;
 	struct io_uring_sqe *sqe;
 	struct io_uring_cqe *cqe;
+	struct io_data *data_cqe;
 	
 	// Creating socket file descriptor
 	if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0)
@@ -128,38 +126,55 @@ int main(int argc, char const *argv[])
 		exit(EXIT_FAILURE);
 	}
 
+	data[0].read = 3;
+	data[1].read = 4;
+
 	for (;;) {
 
-		bzero(buf, BUF_SZ);
-
-		get_sqe(&ring, &sqe);
-		io_uring_prep_read(sqe, new_socket, buf[0], BUF_SZ, 0);
-		data[0].read = 1;
-		io_uring_sqe_set_data(sqe, &data[0]);
-
-
-		get_sqe(&ring, &sqe);
-		io_uring_prep_read(sqe, new_socket, buf[1], BUF_SZ, 0);
-		data[1].read = 2;
-		io_uring_sqe_set_data(sqe, &data[1]);
-
-		res = submit(&ring, &cqe);
-
-		//for (i=0; i<res; i++)
-		//		printf("%x ", ((unsigned char*) buf)[i]);
-
-		struct io_data *data_cqe= io_uring_cqe_get_data(cqe);
-
-		if (data_cqe->read ==1){
+		if (data[0].read == 3){
 			get_sqe(&ring, &sqe);
-			io_uring_prep_write(sqe, new_socket,  buf[0], res, 0);
+			io_uring_prep_read(sqe, new_socket, buf[0], BUF_SZ, 0);
+			data[0].read = 1;
+			io_uring_sqe_set_data(sqe, &data[0]);
+
 		}
-		if (data_cqe->read==2){
+
+		if (data[0].read == 4){
 			get_sqe(&ring, &sqe);
-			io_uring_prep_write(sqe, new_socket,  buf[1], res, 0);
+			io_uring_prep_read(sqe, new_socket, buf[1], BUF_SZ, 0);
+			data[1].read = 2;
+			io_uring_sqe_set_data(sqe, &data[1]);
 		}
 
 		submit(&ring, &cqe);
+
+		for (;;) {
+
+			int res = process(&ring, &cqe);
+
+			if (res == 11)
+				break;
+
+			data_cqe = io_uring_cqe_get_data(cqe);
+
+			if (data_cqe->read == 1){
+				get_sqe(&ring, &sqe);
+				io_uring_prep_write(sqe, new_socket, buf[0], res, 0);
+				data[0].read = 3;
+				io_uring_sqe_set_data(sqe, &data[0]);
+			} 
+			else if (data_cqe->read == 2){
+				get_sqe(&ring, &sqe);
+				io_uring_prep_write(sqe, new_socket, buf[1], res, 0);
+				data[1].read = 4;
+				io_uring_sqe_set_data(sqe, &data[1]);
+			}
+			else {
+				break;
+			}	
+			submit(&ring, &cqe);		
+		}
+
 	}
 
 	io_uring_queue_exit(&ring);
